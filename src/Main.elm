@@ -28,7 +28,7 @@ import Platform exposing (Program)
 
 
 type alias InputType = Int
-type alias OutputType = Int
+type alias OutputType = Maybe Int
 
 port get : (InputType -> msg) -> Sub msg
 
@@ -44,7 +44,8 @@ main =
         }
 
 type alias Model =
-    ()
+    { layer : Int -> Int
+    }
 
 
 type Msg
@@ -54,29 +55,24 @@ type Msg
 type alias Flags =
     ()
 
+foo : Int -> Int
+foo _ = 3
 
 init : Flags -> ( Model, Cmd Msg )
 init _ =
-    ( (), Cmd.none )
+    ( { layer = identity } , Cmd.none )
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
+    let
+        transform : InputType -> OutputType
+        transform k = Just (model.layer k)
+    in
     case msg of
+        Input 9 -> ( { layer = foo }, Cmd.none )
         Input input -> ( model, put (transform input))
 
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
     get Input
-
-{- Below is the input-to-output transformation.
-   It could be anything.  Here we have something
-   simple for demonstration purposes.
--}
-
-transform : InputType -> OutputType
-transform k =
-    case modBy 2 k == 0 of
-        True -> k // 2
-        False -> 3*k+ 1
-

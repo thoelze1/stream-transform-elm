@@ -24,6 +24,7 @@ var Elm = require('./main').Elm;
 var main = Elm.Main.init();
 
 // Eval function for the repl
+// args: command, context, filename, callback
 function eval(input, _, __, callback) {
   main.ports.put.subscribe(
     function putCallback (data) {
