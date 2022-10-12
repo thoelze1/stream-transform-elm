@@ -32,9 +32,9 @@ import Platform exposing (Program)
 
 port get : (Int -> msg) -> Sub msg
 
-port put : Maybe Int -> Cmd msg
+port put : Int -> Cmd msg
 
-port loopback : Maybe Int -> Cmd msg
+port loopback : Int -> Cmd msg
 
 main : Program Flags Model Msg
 main =
@@ -99,7 +99,7 @@ update msg model =
     in
     case output of
       Nothing -> (newModel , Cmd.none)
-      Just x ->  (newModel , put output)
+      Just x ->  (newModel , put x)
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
