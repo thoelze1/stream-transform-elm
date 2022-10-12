@@ -44,10 +44,8 @@ main =
         , subscriptions = subscriptions
         }
 
-type alias Model =
-    { layers : List (Int -> Bool -> (Maybe Int,Bool) , Bool)
-    }
 
+type alias Model = List (Int -> Bool -> (Maybe Int,Bool) , Bool)
 
 type Msg
     = Input Int
@@ -80,25 +78,19 @@ shiftLayer i b =
 
 init : Flags -> ( Model, Cmd Msg )
 init _ =
-    ( { layers = [ (baseMap , False)
-                , (shiftLayer , False)
-                ]
-      }
-      , Cmd.none )
+    ( [ (baseMap , False) , (shiftLayer , False) ] , Cmd.none )
 
 doOps : Maybe Int -> Model -> (Model, Maybe Int)
 doOps i m =
-  case m.layers of
-    [] -> ({ layers = [] },i)
+  case m of
+    [] -> ([],i)
     ((l,s)::rest) -> case i of
                        Nothing -> (m,Nothing)
                        Just x -> let
                                    (output,updatedState) = (l x s)
-                                   (updatedRest,finalOutput) = doOps output
-                                                                     { layers = rest }
+                                   (updatedRest,finalOutput) = doOps output rest
                                  in
-                                 ({ layers = (l,updatedState) :: updatedRest.layers }
-                                  ,finalOutput)
+                                 ((l,updatedState)::updatedRest,finalOutput)
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
