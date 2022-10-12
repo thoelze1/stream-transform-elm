@@ -97,7 +97,9 @@ update msg model =
     let
         (newModel,output) = doOps (Just msg) model
     in
-    (newModel, put output)
+    case output of
+      Nothing -> (newModel , Cmd.none)
+      Just x ->  (newModel , put output)
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
