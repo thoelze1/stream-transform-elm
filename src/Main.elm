@@ -27,14 +27,14 @@ the `transform` function in `Main.elm`.
 import Platform exposing (Program)
 
 
-type alias InputType = Int
-type alias OutputType = Maybe Int
+-- type alias InputType = Int
+-- type alias OutputType = Maybe Int
 
-port get : (InputType -> msg) -> Sub msg
+port get : (Int -> msg) -> Sub msg
 
-port put : OutputType -> Cmd msg
+port put : Maybe Int -> Cmd msg
 
-port loopback : OutputType -> Cmd msg
+port loopback : Maybe Int -> Cmd msg
 
 main : Program Flags Model Msg
 main =
@@ -47,8 +47,8 @@ main =
 
 type alias Model = List (Int -> Bool -> (Maybe Int,Bool) , Bool)
 
-type Msg
-    = Input Int
+type alias Msg
+    = Int
 
 
 type alias Flags =
@@ -94,13 +94,11 @@ doOps i m =
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-  case msg of
-    Input i ->
-      let
-          (newModel,output) = doOps (Just i) model
-      in
-      (newModel, put output)
+    let
+        (newModel,output) = doOps (Just msg) model
+    in
+    (newModel, put output)
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    get Input
+    get identity
