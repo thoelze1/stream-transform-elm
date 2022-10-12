@@ -34,6 +34,7 @@ port get : (InputType -> msg) -> Sub msg
 
 port put : OutputType -> Cmd msg
 
+port loopback : OutputType -> Cmd msg
 
 main : Program Flags Model Msg
 main =
@@ -70,6 +71,7 @@ update msg model =
     in
     case msg of
         Input 9 -> ( { layer = foo }, Cmd.none )
+        Input 8 -> ( model, loopback (Just 7) )
         Input input -> ( model, put (transform input))
 
 

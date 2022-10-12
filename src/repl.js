@@ -35,6 +35,10 @@ function eval(input, _, __, callback) {
   main.ports.get.send(Number(input))
 }
 
+main.ports.loopback.subscribe(function(data) {
+    main.ports.get.send(data)
+});
+
 repl.start({ prompt: '> ', eval: eval });
 
 
