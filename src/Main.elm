@@ -114,26 +114,27 @@ init _ =
       , (catchLayer , (False,[]))
       ] , Cmd.none )
 
-doOps : Maybe Int -> Model -> (Model, Maybe Int)
+doOps : List Int -> Model -> (Model, List Int)
 doOps i m =
   case m of
     [] -> ([],i)
     ((l,s)::rest) -> case i of
-                       Nothing -> (m,Nothing)
-                       Just x -> let
-                                   (output,updatedState) = (l x s)
-                                   (updatedRest,finalOutput) = doOps output rest
-                                 in
-                                 ((l,updatedState)::updatedRest,finalOutput)
+                       [] -> (m,[])
+                       (x::xs) -> let
+                                    (output,updatedState) = (l x s)
+                                    o = case output of
+                                            Nothing -> []
+                                            Just y -> [y]
+                                    (updatedRest,finalOutput) = doOps o rest
+                                  in
+                                  ((l,updatedState)::updatedRest,finalOutput)
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     let
-        (newModel,output) = doOps (Just msg) model
+        (newModel,output) = doOps [msg] model
     in
-    case output of
-      Nothing -> (newModel , Cmd.none)
-      Just x ->  (newModel , put x)
+    (newModel , Cmd.batch (List.map put output))
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
