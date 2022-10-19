@@ -25,14 +25,14 @@ the `transform` function in `Main.elm`.
 -}
 
 import Platform exposing (Program)
-
+import String
 
 -- type alias InputType = Int
 -- type alias OutputType = Maybe Int
 
 port get : (Int -> msg) -> Sub msg
 
-port put : Int -> Cmd msg
+port put : Maybe Int -> Cmd msg
 
 port loopback : Int -> Cmd msg
 
@@ -50,6 +50,10 @@ main =
 -- Int instead of Maybe Int, or in a "hacky" way by emitting control
 -- events back to the layer with the stored values)
 
+-- Now we can emit lists, but still it is good to loop events back,
+-- which is already trivial to implement by adding a wrapper around
+-- the event types
+
 -- Ideas
 -- 1 Construct an algebra of state operations and allow the layer to
 --   emit a list of state operations
@@ -58,20 +62,19 @@ main =
 --   Event -> State -> (List Event, (Event -> State -> (List Event))
 
 type alias LState = (Bool, List Int)
-type alias Model = List (Int -> LState -> (Maybe Int,LState) , LState)
+type alias Model = List (Int -> LState -> (List Int,LState) , LState)
 
 type alias Msg
     = Int
 
-
 type alias Flags =
     ()
 
-baseMap : Int -> LState -> (Maybe Int,LState)
+baseMap : Int -> LState -> (List Int,LState)
 baseMap i _ =
     case i of
-        9 -> (Just 8,(False,[]))
-        _ -> (Just i,(False,[]))
+        9 -> ([8],(False,[]))
+        _ -> ([i],(False,[]))
 
 -- would be cooler if there was pttern matching on functions...
 -- shiftLayer 6 b = (Nothing,not b)
@@ -80,27 +83,27 @@ baseMap i _ =
 -- and
 -- shiftLayer i False = (Just i,b)
 -- elm really is dumb haskell
-shiftLayer : Int -> LState -> (Maybe Int,LState)
+shiftLayer : Int -> LState -> (List Int,LState)
 shiftLayer i (b,_) =
     if i == 6 then
-        (Nothing,(not b,[]))
+        ([],(not b,[]))
       else if b then
-        (Just 3,(b,[]))
+        ([3],(b,[]))
       else
-        (Just i,(b,[]))
+        ([i],(b,[]))
 
-catchLayer : Int -> LState -> (Maybe Int,LState)
+catchLayer : Int -> LState -> (List Int,LState)
 catchLayer i (b,xs) =
     if b then
         if i == 5 then
-            (Just (List.foldl (+) 0 xs),(False,[]))
+            (xs,(False,[]))
           else
-            (Nothing,(True,i::xs))
+            ([],(True,i::xs))
       else
         if i == 5 then
-            (Nothing,(True,[]))
+            ([],(True,[]))
           else
-            (Just i,(False,[]))
+            ([i],(False,[]))
 
 -- tnr : Int -> Model
 -- tnr i =
@@ -121,20 +124,29 @@ doOps i m =
     ((l,s)::rest) -> case i of
                        [] -> (m,[])
                        (x::xs) -> let
-                                    (output,updatedState) = (l x s)
-                                    o = case output of
-                                            Nothing -> []
-                                            Just y -> [y]
-                                    (updatedRest,finalOutput) = doOps o rest
+                                    (output,newLayerState) = (l x s)
+                                    (newModelState,finalOutput1) = doOps xs ((l,newLayerState)::rest)
+                                    (newRestState,finalOutput2) = case newModelState of
+                                      [] -> (newModelState,finalOutput1) --should never happen
+                                      (y::ys) -> doOps output ys
+                                    finalLayerState = case newModelState of
+                                                        [] -> s
+                                                        ((ya,yb)::ys) -> yb
                                   in
-                                  ((l,updatedState)::updatedRest,finalOutput)
+                                  ((l,finalLayerState)::newRestState,
+                                   List.append finalOutput1 finalOutput2)
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     let
         (newModel,output) = doOps [msg] model
     in
-    (newModel , Cmd.batch (List.map put output))
+    case output of
+      [] -> (newModel , put Nothing)
+      _ -> (newModel , List.map String.fromInt output |>
+                       List.foldl (++) "" |>
+                       String.toInt |>
+                       put)
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
