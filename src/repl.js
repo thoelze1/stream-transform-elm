@@ -23,21 +23,20 @@ const repl = require('repl');
 var Elm = require('./main').Elm;
 var main = Elm.Main.init();
 
+var prev;
+
 // Eval function for the repl
 // args: command, context, filename, callback
 function eval(input, _, __, callback) {
-  main.ports.put.subscribe(
-    function putCallback (data) {
-      main.ports.put.unsubscribe(putCallback)
-      callback(null, data)
-    }
-  )
+  if (prev) { main.ports.put.unsubscribe(prev) }
+  prev = function putCallback (data) { callback(null, data) }
+  main.ports.put.subscribe(prev)
   main.ports.get.send(Number(input))
 }
 
-// main.ports.loopback.subscribe(function(data) {
-//    main.ports.get.send(data)
-// });
+main.ports.loopback.subscribe(function(data) {
+   main.ports.get.send(data)
+});
 
 repl.start({ prompt: '> ', eval: eval });
 

@@ -34,7 +34,7 @@ port get : (Int -> msg) -> Sub msg
 
 port put : Maybe Int -> Cmd msg
 
-port loopback : Int -> Cmd msg
+port loopback : Maybe Int -> Cmd msg
 
 main : Program Flags Model Msg
 main =
@@ -61,20 +61,51 @@ main =
 -- 3 Allow the layer to "replace itself." I think this didn't get me anywhere:
 --   Event -> State -> (List Event, (Event -> State -> (List Event))
 
-type alias LState = (Bool, List Int)
-type alias Model = List (Int -> LState -> (List Int,LState) , LState)
+type alias LState = (Bool, List Ctrl)
+type alias Model = List (Ctrl -> LState -> (List Ctrl,LState) , LState)
 
 type alias Msg
     = Int
 
+const : a -> b -> a
+const x _ = x
+
+type Ctrl
+    = Emit Int
+    | Loop Int
+    | Blah Int
+
+cget : Ctrl -> Int
+cget c =
+    case c of
+        Emit i -> i
+        Loop i -> i
+        Blah i -> i
+
+map : (Int -> Int) -> Ctrl -> Ctrl
+map f c =
+    case c of
+        Emit i -> Emit (f i)
+        Loop i -> Loop (f i)
+        Blah i -> Blah (f i)
+
 type alias Flags =
     ()
 
-baseMap : Int -> LState -> (List Int,LState)
-baseMap i _ =
+simpleMap : Int -> Int
+simpleMap i =
     case i of
-        9 -> ([8],(False,[]))
-        _ -> ([i],(False,[]))
+        8 -> 9
+        _ -> i
+
+baseMap : Ctrl -> LState -> (List Ctrl,LState)
+baseMap c _ = ([map simpleMap c],(False,[]))
+
+loopMap : Ctrl -> LState -> (List Ctrl,LState)
+loopMap c s =
+    case cget c of
+        7 -> ([Loop 8],s)
+        _ -> ([c],s)
 
 -- would be cooler if there was pttern matching on functions...
 -- shiftLayer 6 b = (Nothing,not b)
@@ -83,27 +114,27 @@ baseMap i _ =
 -- and
 -- shiftLayer i False = (Just i,b)
 -- elm really is dumb haskell
-shiftLayer : Int -> LState -> (List Int,LState)
-shiftLayer i (b,_) =
-    if i == 6 then
+shiftLayer : Ctrl -> LState -> (List Ctrl,LState)
+shiftLayer c (b,_) =
+    if (cget c) == 6 then
         ([],(not b,[]))
       else if b then
-        ([3],(b,[]))
+        ([map (const 3) c],(b,[]))
       else
-        ([i],(b,[]))
+        ([c],(b,[]))
 
-catchLayer : Int -> LState -> (List Int,LState)
-catchLayer i (b,xs) =
+catchLayer : Ctrl -> LState -> (List Ctrl,LState)
+catchLayer c (b,xs) =
     if b then
-        if i == 5 then
+        if cget c == 5 then
             (xs,(False,[]))
           else
-            ([],(True,i::xs))
+            ([],(True,c::xs))
       else
-        if i == 5 then
+        if cget c == 5 then
             ([],(True,[]))
           else
-            ([i],(False,[]))
+            ([c],(False,[]))
 
 -- tnr : Int -> Model
 -- tnr i =
@@ -115,38 +146,45 @@ init _ =
     ( [ (baseMap , (False,[]))
       , (shiftLayer , (False,[]))
       , (catchLayer , (False,[]))
+      , (loopMap , (False,[]))
       ] , Cmd.none )
 
-doOps : List Int -> Model -> (Model, List Int)
+doOps : List Ctrl -> Model -> (Model, List Ctrl)
 doOps i m =
   case m of
     [] -> ([],i)
-    ((l,s)::rest) -> case i of
-                       [] -> (m,[])
-                       (x::xs) -> let
-                                    (output,newLayerState) = (l x s)
-                                    (newModelState,finalOutput1) = doOps xs ((l,newLayerState)::rest)
-                                    (newRestState,finalOutput2) = case newModelState of
-                                      [] -> (newModelState,finalOutput1) --should never happen
-                                      (y::ys) -> doOps output ys
-                                    finalLayerState = case newModelState of
-                                                        [] -> s
-                                                        ((ya,yb)::ys) -> yb
-                                  in
-                                  ((l,finalLayerState)::newRestState,
-                                   List.append finalOutput1 finalOutput2)
+    ((l,s)::rest) ->
+      case i of
+        [] -> (m,[])
+        (x::xs) ->
+          let
+            (output,newLayerState) = (l x s)
+            (newModelState,finalOutput1) = doOps xs ((l,newLayerState)::rest)
+            (newRestState,finalOutput2) = case newModelState of
+                                            [] -> (newModelState,finalOutput1)
+                                            (y::ys) -> doOps output ys
+            finalLayerState = case newModelState of
+                                [] -> s
+                                ((ya,yb)::ys) -> yb
+          in
+          ((l,finalLayerState)::newRestState,
+          List.append finalOutput1 finalOutput2)
+
+cdispatch : Ctrl -> Cmd Msg
+cdispatch c =
+    case c of
+        Emit i -> put (Just i)
+        Blah i -> put (Just i)
+        Loop i -> loopback (Just i)
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     let
-        (newModel,output) = doOps [msg] model
+        (newModel,output) = doOps [Blah msg] model
     in
     case output of
       [] -> (newModel , put Nothing)
-      _ -> (newModel , List.map String.fromInt output |>
-                       List.foldl (++) "" |>
-                       String.toInt |>
-                       put)
+      _ -> (newModel , List.map cdispatch output |> Cmd.batch)
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
