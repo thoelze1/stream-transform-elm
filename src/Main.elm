@@ -36,6 +36,8 @@ port put : Maybe Int -> Cmd msg
 
 port loopback : Maybe Int -> Cmd msg
 
+port wait : Maybe Int -> Cmd msg
+
 main : Program Flags Model Msg
 main =
     Platform.worker
@@ -70,10 +72,13 @@ type alias Msg
 const : a -> b -> a
 const x _ = x
 
+-- wait time is orthogonal to destination, so maybe structure
+-- should be different here...
 type Ctrl
     = Emit Int
     | Loop Int
     | Blah Int
+    | Wait Int
 
 cget : Ctrl -> Int
 cget c =
@@ -81,6 +86,7 @@ cget c =
         Emit i -> i
         Loop i -> i
         Blah i -> i
+        Wait i -> i
 
 map : (Int -> Int) -> Ctrl -> Ctrl
 map f c =
@@ -88,6 +94,7 @@ map f c =
         Emit i -> Emit (f i)
         Loop i -> Loop (f i)
         Blah i -> Blah (f i)
+        Wait i -> Wait (f i)
 
 type alias Flags =
     ()
@@ -104,7 +111,7 @@ baseMap c _ = ([map simpleMap c],(False,[]))
 loopMap : Ctrl -> LState -> (List Ctrl,LState)
 loopMap c s =
     case cget c of
-        7 -> ([Loop 8],s)
+        7 -> ([Wait 8],s)
         _ -> ([c],s)
 
 -- would be cooler if there was pttern matching on functions...
@@ -176,6 +183,7 @@ cdispatch c =
         Emit i -> put (Just i)
         Blah i -> put (Just i)
         Loop i -> loopback (Just i)
+        Wait i -> wait (Just i)
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
