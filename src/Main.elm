@@ -26,6 +26,8 @@ the `transform` function in `Main.elm`.
 
 import Platform exposing (Program)
 import String
+import Task
+import Process
 
 -- type alias InputType = Int
 -- type alias OutputType = Maybe Int
@@ -67,34 +69,23 @@ type alias LState = (Bool, List Ctrl)
 type alias Model = List (Ctrl -> LState -> (List Ctrl,LState) , LState)
 
 type alias Msg
-    = Int
+    = Ctrl
 
 const : a -> b -> a
 const x _ = x
 
+type Dest = Forward | Out | In
+type alias Wait = Int
+
 -- wait time is orthogonal to destination, so maybe structure
 -- should be different here...
-type Ctrl
-    = Emit Int
-    | Loop Int
-    | Blah Int
-    | Wait Int
+type Ctrl = Ctrl Dest Wait Int
 
-cget : Ctrl -> Int
-cget c =
-    case c of
-        Emit i -> i
-        Loop i -> i
-        Blah i -> i
-        Wait i -> i
+getInt : Ctrl -> Int
+getInt (Ctrl d w i) = i
 
 map : (Int -> Int) -> Ctrl -> Ctrl
-map f c =
-    case c of
-        Emit i -> Emit (f i)
-        Loop i -> Loop (f i)
-        Blah i -> Blah (f i)
-        Wait i -> Wait (f i)
+map f (Ctrl d w i) = Ctrl d w (f i)
 
 type alias Flags =
     ()
@@ -110,8 +101,8 @@ baseMap c _ = ([map simpleMap c],(False,[]))
 
 loopMap : Ctrl -> LState -> (List Ctrl,LState)
 loopMap c s =
-    case cget c of
-        7 -> ([Wait 8],s)
+    case getInt c of
+        7 -> ([Ctrl In 0 8],s)
         _ -> ([c],s)
 
 -- would be cooler if there was pttern matching on functions...
@@ -123,7 +114,7 @@ loopMap c s =
 -- elm really is dumb haskell
 shiftLayer : Ctrl -> LState -> (List Ctrl,LState)
 shiftLayer c (b,_) =
-    if (cget c) == 6 then
+    if getInt c == 6 then
         ([],(not b,[]))
       else if b then
         ([map (const 3) c],(b,[]))
@@ -133,28 +124,45 @@ shiftLayer c (b,_) =
 catchLayer : Ctrl -> LState -> (List Ctrl,LState)
 catchLayer c (b,xs) =
     if b then
-        if cget c == 5 then
+        if getInt c == 5 then
             (xs,(False,[]))
           else
             ([],(True,c::xs))
       else
-        if cget c == 5 then
+        if getInt c == 5 then
             ([],(True,[]))
           else
             ([c],(False,[]))
 
+-- this too should simply be a map from ctrl value to list of control values,
+-- with anothr function that turns that map into a full layer
+waitMap : Ctrl -> LState -> (List Ctrl, LState)
+waitMap (Ctrl d w i) s =
+  case i of
+    9 -> ([Ctrl d 1000 i],s)
+    _ -> ([Ctrl d w i],s)
+  
 -- tnr : Int -> Model
 -- tnr i =
 --   [ \x b -> case x of
 --                i -> ]
 
+
+type alias Layer = Ctrl -> LState -> (List Ctrl, LState)
+
+myMap : List Layer
+myMap = [ baseMap
+        , shiftLayer
+        , catchLayer
+        , waitMap
+        , loopMap
+        ]
+        
+-- here there should be a function to give a map the default state,
+-- so it becomes (initialize [baseMap,shiftLayer,catchLayer,loopMap,waitMap])
 init : Flags -> ( Model, Cmd Msg )
 init _ =
-    ( [ (baseMap , (False,[]))
-      , (shiftLayer , (False,[]))
-      , (catchLayer , (False,[]))
-      , (loopMap , (False,[]))
-      ] , Cmd.none )
+    ( List.map (\l -> (l , (False,[]))) myMap, Cmd.none )
 
 doOps : List Ctrl -> Model -> (Model, List Ctrl)
 doOps i m =
@@ -177,23 +185,41 @@ doOps i m =
           ((l,finalLayerState)::newRestState,
           List.append finalOutput1 finalOutput2)
 
-cdispatch : Ctrl -> Cmd Msg
-cdispatch c =
-    case c of
-        Emit i -> put (Just i)
-        Blah i -> put (Just i)
-        Loop i -> loopback (Just i)
-        Wait i -> wait (Just i)
+-- i think I can remove the loopback port...
+-- the following map belongs as data (a list of tuples?), not as code
+destMap : Dest -> (Maybe Int -> Cmd msg)
+destMap d =
+    case d of
+        Forward -> put
+        Out -> put
+        In -> loopback
 
+-- Ctrl should actually have two value constructors, one with time and one without
+cdispatch : Ctrl -> Cmd Ctrl
+cdispatch (Ctrl d w i) =
+  if w > 0 then
+      delay w i
+    else
+      destMap d <| Just i
+
+delay : Int -> Int -> Cmd Msg
+delay i msg =
+  Process.sleep (toFloat i)
+  |> Task.perform (\_ -> (Ctrl Out 0 msg))
+  
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    let
-        (newModel,output) = doOps [Blah msg] model
-    in
-    case output of
-      [] -> (newModel , put Nothing)
-      _ -> (newModel , List.map cdispatch output |> Cmd.batch)
+  case msg of
+    Ctrl Out w i -> (model,cdispatch msg)
+    Ctrl In w i -> (model,cdispatch msg)
+    Ctrl Forward w i ->
+      let
+        (newModel,output) = doOps [msg] model
+      in
+      case output of
+        [] -> (newModel , put Nothing)
+        _ -> (newModel , List.map cdispatch output |> Cmd.batch)
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    get identity
+    get <| Ctrl Forward 0

@@ -25,7 +25,7 @@ var main = Elm.Main.init();
 
 var prev;
 
-var prev2;
+//var prev2;
 
 // Eval function for the repl
 // args: command, context, filename, callback
@@ -33,11 +33,11 @@ function eval(input, _, __, callback) {
   if (prev) { main.ports.put.unsubscribe(prev) }
   prev = function putCallback (data) { callback(null, data) }
   main.ports.put.subscribe(prev)
-  if (prev2) { main.ports.wait.unsubscribe(prev2) }
-  prev2 = function putCallback2 (data) {
-      setTimeout(function() {callback(null, data)},1000)
-  }
-  main.ports.wait.subscribe(prev2)
+  //if (prev2) { main.ports.wait.unsubscribe(prev2) }
+  //prev2 = function putCallback2 (data) {
+  //    setTimeout(function() {callback(null, data)},1000)
+  //}
+  //main.ports.wait.subscribe(prev2)
   main.ports.get.send(Number(input))
 }
 
