@@ -68,7 +68,15 @@ main =
 -- 3 Allow the layer to "replace itself." I think this didn't get me anywhere:
 --   Event -> State -> (List Event, (Event -> State -> (List Event))
 
-type alias LState = (Bool, List Ctrl)
+
+-- could theoretically create 3-state algebraic type for TNR to replace the 2 bools
+type LState
+    = None
+    | Toggle Bool
+    | Pool (List Ctrl)
+    | Catch Bool (List Ctrl)
+    | TNR Bool (List Ctrl)
+
 type alias Model = List (Ctrl -> LState -> (List Ctrl,LState) , LState)
 
 type alias Msg
@@ -99,14 +107,21 @@ simpleMap i =
         8 -> 9
         _ -> i
 
+-- todo: use maybe to signal errors
+
 baseMap : Ctrl -> LState -> (List Ctrl,LState)
-baseMap c _ = ([map simpleMap c],(False,[]))
+baseMap c s =
+    case s of
+        None -> ([map simpleMap c],None)
+        _ -> ([],None)
 
 loopMap : Ctrl -> LState -> (List Ctrl,LState)
 loopMap c s =
-    case getInt c of
-        7 -> ([Ctrl In 0 8],s)
-        _ -> ([c],s)
+  case s of
+    None -> case getInt c of
+              7 -> ([Ctrl In 0 8],None)
+              _ -> ([c],None)
+    _ -> ([],None)
 
 -- would be cooler if there was pttern matching on functions...
 -- shiftLayer 6 b = (Nothing,not b)
@@ -116,34 +131,42 @@ loopMap c s =
 -- shiftLayer i False = (Just i,b)
 -- elm really is dumb haskell
 shiftLayer : Ctrl -> LState -> (List Ctrl,LState)
-shiftLayer c (b,_) =
-    if getInt c == 6 then
-        ([],(not b,[]))
-      else if b then
-        ([map (const 3) c],(b,[]))
-      else
-        ([c],(b,[]))
+shiftLayer c s =
+  case s of
+    Toggle b -> if getInt c == 6 then
+                    ([],Toggle (not b))
+                  else if b then
+                    ([map (const 3) c],Toggle b)
+                  else
+                    ([c],Toggle b)
+    _ -> ([],None)
 
 catchLayer : Ctrl -> LState -> (List Ctrl,LState)
-catchLayer c (b,xs) =
+catchLayer c s =
+ case s of
+  Catch b xs ->
     if b then
         if getInt c == 5 then
-            (xs,(False,[]))
+            (xs, Catch False [])
           else
-            ([],(True,c::xs))
+            ([], Catch True (c::xs))
       else
         if getInt c == 5 then
-            ([],(True,[]))
+            ([], Catch True [])
           else
-            ([c],(False,[]))
+            ([c], Catch False [])
+  _ -> ([],None)
 
 -- this too should simply be a map from ctrl value to list of control values,
 -- with another function that turns that map into a full layer
 waitMap : Ctrl -> LState -> (List Ctrl, LState)
 waitMap (Ctrl d w i) s =
-  case i of
-    9 -> ([Ctrl d 1000 i],s)
-    _ -> ([Ctrl d w i],s)
+ case s of
+  None ->
+   case i of
+     9 -> ([Ctrl d 1000 i],None)
+     _ -> ([Ctrl d w i],None)
+  _ -> ([],None)
 
 -- next we've got to make this more general: mkTapNextRelease, isPress, isRelease, etc
 
@@ -151,7 +174,10 @@ isPress : Ctrl -> Bool
 isPress c = modBy 2 (getInt c) == 0
 
 isDown : LState -> Bool
-isDown (_,xs) = List.member 0 (List.map getInt xs)
+isDown s =
+ case s of
+  TNR _ xs -> List.member 0 (List.map getInt xs)
+  _ -> False
 
 codes : List Int
 codes = List.range 65 90
@@ -178,33 +204,36 @@ codeToChar i = Dict.get i charsByCode
 -- release of the key of which x represents a press. Let's say 0 and 1 represent
 -- press and release of key A
 tapNextReleaseA : Ctrl -> LState -> (List Ctrl, LState)
-tapNextReleaseA c (isHold,xs) =
+tapNextReleaseA c s =
+ case s of
+  TNR isHold xs ->
 -- b corresponds to whether or not map is active
-  if not (isDown (isHold,xs)) then
-      if getInt c == 0 then
-          ([],(False,[c]))
-        else
-          ([c],(False,[]))
-    else
-      if not isHold then
-          if isPress c then
-              ([],(False,c::xs))
-            else
-              if getInt c == 1 then
-                  (c::xs,(False,[]))
-                else
-                  if List.member ((getInt c)-1) (List.map getInt xs) then
-                      let (zero,rest) = List.partition (\x -> getInt x == 0) (c::xs) in
-                      (List.append (List.map (\z -> map (\q -> 3*q) z) rest)
-                                   zero
-                      ,(True,zero))
-                    else
-                      ([c],(False,xs))
-        else
-          if getInt c == 1 then
-              ([c],(False,[]))
-            else
-              ([map (\z -> 3*z) c],(True,xs))
+   if not (isDown (TNR isHold xs)) then
+       if getInt c == 0 then
+           ([],TNR False [c])
+         else
+           ([c],TNR False [])
+     else
+       if not isHold then
+           if isPress c then
+               ([],TNR False (c::xs))
+             else
+               if getInt c == 1 then
+                   (c::xs,TNR False [])
+                 else
+                   if List.member ((getInt c)-1) (List.map getInt xs) then
+                       let (zero,rest) = List.partition (\x -> getInt x == 0) (c::xs) in
+                       (List.append (List.map (\z -> map (\q -> 3*q) z) rest)
+                                    zero
+                       ,TNR True zero)
+                     else
+                       ([c],TNR False xs)
+         else
+           if getInt c == 1 then
+               ([c],TNR False [])
+             else
+               ([map (\z -> 3*z) c],TNR True xs)
+  _ -> ([],None)
 
 --  if isPress c then
 --      if getInt c == 0 then
@@ -234,12 +263,12 @@ tapNextReleaseA c (isHold,xs) =
 
 type alias Layer = Ctrl -> LState -> (List Ctrl, LState)
 
-myMap : List Layer
-myMap = [ tapNextReleaseA ]
-        
+-- myMap : List Layer
+-- myMap = [ tapNextReleaseA ]
+
 init : Flags -> ( Model, Cmd Msg )
 init _ =
-    ( List.map (\l -> (l , (False,[]))) myMap, Cmd.none )
+    ( [ (tapNextReleaseA , TNR False []) ] , Cmd.none )
 
 
 -- i think doOps should manage destination and waiting of events;
