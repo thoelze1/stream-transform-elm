@@ -31,6 +31,7 @@ import Process
 import Char
 import Tuple
 import Dict
+import Either
 
 -- type alias InputType = Int
 -- type alias OutputType = Maybe Int
@@ -79,6 +80,16 @@ type LState
     | Catch Bool (List Ctrl)
     | TNR Bool (List Ctrl)
 
+type Error
+    = BadModel
+    | UnexpectedLState
+
+errorToString : Error -> String
+errorToString e =
+    case e of
+        BadModel -> "something is wrong with the model"
+        UnexpectedLState -> "unexpected type of state received by layer"
+
 type alias Model = List (Layer , LState)
 
 type alias Msg
@@ -111,19 +122,19 @@ simpleMap i =
 
 -- todo: use maybe to signal errors
 
-baseMap : Ctrl -> LState -> Maybe (List Ctrl,LState)
+baseMap : Ctrl -> LState -> Either.Either Error (List Ctrl,LState) 
 baseMap c s =
     case s of
-        None -> Just ([map simpleMap c],None)
-        _ -> Nothing
+        None -> Either.Right ([map simpleMap c],None)
+        _ -> Either.Left UnexpectedLState
 
-loopMap : Ctrl -> LState -> Maybe (List Ctrl,LState)
+loopMap : Ctrl -> LState -> Either.Either Error (List Ctrl,LState)
 loopMap c s =
   case s of
     None -> case getInt c of
-              7 -> Just ([Ctrl In 0 8],None)
-              _ -> Just ([c],None)
-    _ -> Nothing
+              7 -> Either.Right ([Ctrl In 0 8],None)
+              _ -> Either.Right ([c],None)
+    _ -> Either.Left UnexpectedLState
 
 shift : Ctrl -> Bool -> (List Ctrl,Bool)
 shift c b =
@@ -134,21 +145,23 @@ shift c b =
     else
       ([c],b)
 
-toLayer : (Ctrl -> a -> (List Ctrl,a)) -> (LState -> Maybe a) -> (a -> Maybe LState) ->
+-- below... should be using >>= ??????
+toLayer : (Ctrl -> a -> (List Ctrl,a)) -> (LState -> Either.Either Error a) ->
+          (a -> Either.Either Error LState) ->
           Layer
 toLayer l f g =
   \c s -> case f s of
-              Just x -> let (xs,ss) = (l c x) in
-                        case g ss of
-                            Just ls -> Just (xs,ls)
-                            Nothing -> Nothing
-              Nothing -> Nothing
+              Either.Right x -> let (xs,ss) = (l c x) in
+                                  case g ss of
+                                    Either.Right ls -> Either.Right (xs,ls)
+                                    Either.Left e -> Either.Left e
+              Either.Left e -> Either.Left e
 
-shiftLayer : Ctrl -> LState -> Maybe (List Ctrl,LState)
+shiftLayer : Ctrl -> LState -> Either.Either Error (List Ctrl,LState)
 shiftLayer = toLayer shift (\s -> case s of
-                                     Toggle b -> Just b
-                                     _ -> Nothing)
-                           (\b -> Just (Toggle b))
+                                     Toggle b -> Either.Right b
+                                     _ -> Either.Left UnexpectedLState)
+                           (\b -> Either.Right (Toggle b))
 
 -- would be cooler if there was pttern matching on functions...
 -- shiftLayer 6 b = (Nothing,not b)
@@ -168,32 +181,32 @@ shiftLayer = toLayer shift (\s -> case s of
 --                    Just ([c],Toggle b)
 --    _ -> ([],None)
 
-catchLayer : Ctrl -> LState -> Maybe (List Ctrl,LState)
+catchLayer : Ctrl -> LState -> Either.Either Error (List Ctrl,LState)
 catchLayer c s =
  case s of
   Catch b xs ->
     if b then
         if getInt c == 5 then
-            Just (xs, Catch False [])
+            Either.Right (xs, Catch False [])
           else
-            Just ([], Catch True (c::xs))
+            Either.Right ([], Catch True (c::xs))
       else
         if getInt c == 5 then
-            Just ([], Catch True [])
+            Either.Right ([], Catch True [])
           else
-            Just ([c], Catch False [])
-  _ -> Nothing
+            Either.Right ([c], Catch False [])
+  _ -> Either.Left UnexpectedLState
 
 -- this too should simply be a map from ctrl value to list of control values,
 -- with another function that turns that map into a full layer
-waitMap : Ctrl -> LState -> Maybe (List Ctrl, LState)
+waitMap : Ctrl -> LState -> Either.Either Error (List Ctrl, LState)
 waitMap (Ctrl d w i) s =
  case s of
   None ->
    case i of
-     9 -> Just ([Ctrl d 1000 i],None)
-     _ -> Just ([Ctrl d w i],None)
-  _ -> Nothing
+     9 -> Either.Right ([Ctrl d 1000 i],None)
+     _ -> Either.Right ([Ctrl d w i],None)
+  _ -> Either.Left UnexpectedLState
 
 -- next we've got to make this more general: mkTapNextRelease, isPress, isRelease, etc
 
@@ -230,37 +243,37 @@ codeToChar i = Dict.get i charsByCode
 -- let's say that even integers x represent key presses, and each x+1 represents
 -- release of the key of which x represents a press. Let's say 0 and 1 represent
 -- press and release of key A
-tapNextReleaseA : Ctrl -> LState -> Maybe (List Ctrl, LState)
+tapNextReleaseA : Ctrl -> LState -> Either.Either Error (List Ctrl, LState)
 tapNextReleaseA c s =
  case s of
   TNR isHold xs ->
 -- b corresponds to whether or not map is active
    if not (isDown (TNR isHold xs)) then
        if getInt c == 0 then
-           Just ([],TNR False [c])
+           Either.Right ([],TNR False [c])
          else
-           Just ([c],TNR False [])
+           Either.Right ([c],TNR False [])
      else
        if not isHold then
            if isPress c then
-               Just ([],TNR False (c::xs))
+               Either.Right ([],TNR False (c::xs))
              else
                if getInt c == 1 then
-                   Just (c::xs,TNR False [])
+                   Either.Right (c::xs,TNR False [])
                  else
                    if List.member ((getInt c)-1) (List.map getInt xs) then
                        let (zero,rest) = List.partition (\x -> getInt x == 0) (c::xs) in
-                       Just (List.append (List.map (\z -> map (\q -> 3*q) z) rest)
+                       Either.Right (List.append (List.map (\z -> map (\q -> 3*q) z) rest)
                                          zero
                        ,TNR True zero)
                      else
-                       Just ([c],TNR False xs)
+                       Either.Right ([c],TNR False xs)
          else
            if getInt c == 1 then
-               Just ([c],TNR False [])
+               Either.Right ([c],TNR False [])
              else
-               Just ([map (\z -> 3*z) c],TNR True xs)
-  _ -> Just ([],None)
+               Either.Right ([map (\z -> 3*z) c],TNR True xs)
+  _ -> Either.Left UnexpectedLState
 
 --  if isPress c then
 --      if getInt c == 0 then
@@ -288,17 +301,17 @@ tapNextReleaseA c s =
 --    else
 --      ([c],(False,[]))
 
-type alias Layer = Ctrl -> LState -> Maybe (List Ctrl, LState)
+type alias Layer = Ctrl -> LState -> Either.Either Error (List Ctrl, LState)
 
 -- myMap : List Layer
 -- myMap = [ tapNextReleaseA ]
 
 init : Flags -> ( Model, Cmd Msg )
 init _ =
-    ( [ (tapNextReleaseA , TNR False []) ] , Cmd.none )
+    ( [ (tapNextReleaseA , None) ] , Cmd.none )
 
 
--- replace Maybe with Either plus meaningful error message
+-- replace Maybe with Either.Either plus meaningful error message
 
 -- i think doOps should manage destination and waiting of events;
 -- each layer therefore should only care about the actual event it
@@ -306,27 +319,27 @@ init _ =
 -- correct time (and should be the correct recipient) of the event
 
 -- doOps : List Ctrl -> State Model List Ctrl
-doOps : List Ctrl -> Model -> Maybe (Model, List Ctrl)
+doOps : List Ctrl -> Model -> Either.Either Error (Model, List Ctrl)
 doOps i m =
   case m of
-    [] -> Just ([],i)
+    [] -> Either.Right ([],i)
     ((l,s)::rest) ->
       case i of
-        [] -> Just (m,[])
+        [] -> Either.Right (m,[])
         (x::xs) ->
          case (l x s) of
-           Nothing -> Nothing
-           Just (output,newLayerState) ->
+           Either.Left e -> Either.Left e
+           Either.Right (output,newLayerState) ->
             case doOps xs ((l,newLayerState)::rest) of
-             Nothing -> Nothing
-             Just (newModelState,finalOutput1) ->
+             Either.Left e -> Either.Left e
+             Either.Right (newModelState,finalOutput1) ->
               case newModelState of
-               [] -> Nothing --unique error
+               [] -> Either.Left BadModel
                ((ya,yb)::ys) ->
                 case doOps output ys of
-                 Nothing -> Nothing
-                 Just (newRestState,finalOutput2) ->
-                  Just ((l,yb)::newRestState,List.append finalOutput1
+                 Either.Left e -> Either.Left e
+                 Either.Right (newRestState,finalOutput2) ->
+                  Either.Right ((l,yb)::newRestState,List.append finalOutput1
                                                          finalOutput2)
 
 -- there are actually 3 ways to do loopback:
@@ -364,8 +377,8 @@ update msg model =
     Ctrl In w i -> (model,cdispatch msg)
     Ctrl Forward w i ->
       case doOps [msg] model of
-        Nothing -> (model,error "something went wrong")
-        Just (newModel,output) ->
+        Either.Left e -> (model,error (errorToString e))
+        Either.Right (newModel,output) ->
          case output of
           [] -> (newModel , put Nothing)
           _ -> (newModel , List.map cdispatch output |> Cmd.batch)
