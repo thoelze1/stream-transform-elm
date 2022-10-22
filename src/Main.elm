@@ -43,6 +43,8 @@ port loopback : Maybe Int -> Cmd msg
 
 port wait : Maybe Int -> Cmd msg
 
+port error : String -> Cmd msg
+
 main : Program Flags Model Msg
 main =
     Platform.worker
@@ -77,7 +79,7 @@ type LState
     | Catch Bool (List Ctrl)
     | TNR Bool (List Ctrl)
 
-type alias Model = List (Ctrl -> LState -> (List Ctrl,LState) , LState)
+type alias Model = List (Layer , LState)
 
 type alias Msg
     = Ctrl
@@ -109,19 +111,44 @@ simpleMap i =
 
 -- todo: use maybe to signal errors
 
-baseMap : Ctrl -> LState -> (List Ctrl,LState)
+baseMap : Ctrl -> LState -> Maybe (List Ctrl,LState)
 baseMap c s =
     case s of
-        None -> ([map simpleMap c],None)
-        _ -> ([],None)
+        None -> Just ([map simpleMap c],None)
+        _ -> Nothing
 
-loopMap : Ctrl -> LState -> (List Ctrl,LState)
+loopMap : Ctrl -> LState -> Maybe (List Ctrl,LState)
 loopMap c s =
   case s of
     None -> case getInt c of
-              7 -> ([Ctrl In 0 8],None)
-              _ -> ([c],None)
-    _ -> ([],None)
+              7 -> Just ([Ctrl In 0 8],None)
+              _ -> Just ([c],None)
+    _ -> Nothing
+
+shift : Ctrl -> Bool -> (List Ctrl,Bool)
+shift c b =
+  if getInt c == 6 then
+      ([],b)
+    else if b then
+      ([map (const 3) c],b)
+    else
+      ([c],b)
+
+toLayer : (Ctrl -> a -> (List Ctrl,a)) -> (LState -> Maybe a) -> (a -> Maybe LState) ->
+          Layer
+toLayer l f g =
+  \c s -> case f s of
+              Just x -> let (xs,ss) = (l c x) in
+                        case g ss of
+                            Just ls -> Just (xs,ls)
+                            Nothing -> Nothing
+              Nothing -> Nothing
+
+shiftLayer : Ctrl -> LState -> Maybe (List Ctrl,LState)
+shiftLayer = toLayer shift (\s -> case s of
+                                     Toggle b -> Just b
+                                     _ -> Nothing)
+                           (\b -> Just (Toggle b))
 
 -- would be cooler if there was pttern matching on functions...
 -- shiftLayer 6 b = (Nothing,not b)
@@ -130,43 +157,43 @@ loopMap c s =
 -- and
 -- shiftLayer i False = (Just i,b)
 -- elm really is dumb haskell
-shiftLayer : Ctrl -> LState -> (List Ctrl,LState)
-shiftLayer c s =
-  case s of
-    Toggle b -> if getInt c == 6 then
-                    ([],Toggle (not b))
-                  else if b then
-                    ([map (const 3) c],Toggle b)
-                  else
-                    ([c],Toggle b)
-    _ -> ([],None)
+-- shiftLayer : Ctrl -> LState -> Maybe (List Ctrl,LState)
+-- shiftLayer c s =
+-- case s of
+--    Toggle b -> if getInt c == 6 then
+--                    Just ([],Toggle (not b))
+--                  else if b then
+--                    Just ([map (const 3) c],Toggle b)
+--                  else
+--                    Just ([c],Toggle b)
+--    _ -> ([],None)
 
-catchLayer : Ctrl -> LState -> (List Ctrl,LState)
+catchLayer : Ctrl -> LState -> Maybe (List Ctrl,LState)
 catchLayer c s =
  case s of
   Catch b xs ->
     if b then
         if getInt c == 5 then
-            (xs, Catch False [])
+            Just (xs, Catch False [])
           else
-            ([], Catch True (c::xs))
+            Just ([], Catch True (c::xs))
       else
         if getInt c == 5 then
-            ([], Catch True [])
+            Just ([], Catch True [])
           else
-            ([c], Catch False [])
-  _ -> ([],None)
+            Just ([c], Catch False [])
+  _ -> Nothing
 
 -- this too should simply be a map from ctrl value to list of control values,
 -- with another function that turns that map into a full layer
-waitMap : Ctrl -> LState -> (List Ctrl, LState)
+waitMap : Ctrl -> LState -> Maybe (List Ctrl, LState)
 waitMap (Ctrl d w i) s =
  case s of
   None ->
    case i of
-     9 -> ([Ctrl d 1000 i],None)
-     _ -> ([Ctrl d w i],None)
-  _ -> ([],None)
+     9 -> Just ([Ctrl d 1000 i],None)
+     _ -> Just ([Ctrl d w i],None)
+  _ -> Nothing
 
 -- next we've got to make this more general: mkTapNextRelease, isPress, isRelease, etc
 
@@ -203,37 +230,37 @@ codeToChar i = Dict.get i charsByCode
 -- let's say that even integers x represent key presses, and each x+1 represents
 -- release of the key of which x represents a press. Let's say 0 and 1 represent
 -- press and release of key A
-tapNextReleaseA : Ctrl -> LState -> (List Ctrl, LState)
+tapNextReleaseA : Ctrl -> LState -> Maybe (List Ctrl, LState)
 tapNextReleaseA c s =
  case s of
   TNR isHold xs ->
 -- b corresponds to whether or not map is active
    if not (isDown (TNR isHold xs)) then
        if getInt c == 0 then
-           ([],TNR False [c])
+           Just ([],TNR False [c])
          else
-           ([c],TNR False [])
+           Just ([c],TNR False [])
      else
        if not isHold then
            if isPress c then
-               ([],TNR False (c::xs))
+               Just ([],TNR False (c::xs))
              else
                if getInt c == 1 then
-                   (c::xs,TNR False [])
+                   Just (c::xs,TNR False [])
                  else
                    if List.member ((getInt c)-1) (List.map getInt xs) then
                        let (zero,rest) = List.partition (\x -> getInt x == 0) (c::xs) in
-                       (List.append (List.map (\z -> map (\q -> 3*q) z) rest)
-                                    zero
+                       Just (List.append (List.map (\z -> map (\q -> 3*q) z) rest)
+                                         zero
                        ,TNR True zero)
                      else
-                       ([c],TNR False xs)
+                       Just ([c],TNR False xs)
          else
            if getInt c == 1 then
-               ([c],TNR False [])
+               Just ([c],TNR False [])
              else
-               ([map (\z -> 3*z) c],TNR True xs)
-  _ -> ([],None)
+               Just ([map (\z -> 3*z) c],TNR True xs)
+  _ -> Just ([],None)
 
 --  if isPress c then
 --      if getInt c == 0 then
@@ -261,7 +288,7 @@ tapNextReleaseA c s =
 --    else
 --      ([c],(False,[]))
 
-type alias Layer = Ctrl -> LState -> (List Ctrl, LState)
+type alias Layer = Ctrl -> LState -> Maybe (List Ctrl, LState)
 
 -- myMap : List Layer
 -- myMap = [ tapNextReleaseA ]
@@ -271,30 +298,36 @@ init _ =
     ( [ (tapNextReleaseA , TNR False []) ] , Cmd.none )
 
 
+-- replace Maybe with Either plus meaningful error message
+
 -- i think doOps should manage destination and waiting of events;
 -- each layer therefore should only care about the actual event it
 -- has recevied, because it should have been provided the event at the
 -- correct time (and should be the correct recipient) of the event
-doOps : List Ctrl -> Model -> (Model, List Ctrl)
+
+-- doOps : List Ctrl -> State Model List Ctrl
+doOps : List Ctrl -> Model -> Maybe (Model, List Ctrl)
 doOps i m =
   case m of
-    [] -> ([],i)
+    [] -> Just ([],i)
     ((l,s)::rest) ->
       case i of
-        [] -> (m,[])
+        [] -> Just (m,[])
         (x::xs) ->
-          let
-            (output,newLayerState) = (l x s)
-            (newModelState,finalOutput1) = doOps xs ((l,newLayerState)::rest)
-            (newRestState,finalOutput2) = case newModelState of
-                                            [] -> (newModelState,finalOutput1)
-                                            (y::ys) -> doOps output ys
-            finalLayerState = case newModelState of
-                                [] -> s
-                                ((ya,yb)::ys) -> yb
-          in
-          ((l,finalLayerState)::newRestState,
-          List.append finalOutput1 finalOutput2)
+         case (l x s) of
+           Nothing -> Nothing
+           Just (output,newLayerState) ->
+            case doOps xs ((l,newLayerState)::rest) of
+             Nothing -> Nothing
+             Just (newModelState,finalOutput1) ->
+              case newModelState of
+               [] -> Nothing --unique error
+               ((ya,yb)::ys) ->
+                case doOps output ys of
+                 Nothing -> Nothing
+                 Just (newRestState,finalOutput2) ->
+                  Just ((l,yb)::newRestState,List.append finalOutput1
+                                                         finalOutput2)
 
 -- there are actually 3 ways to do loopback:
 -- 1 using ports with a JS listener
@@ -330,12 +363,12 @@ update msg model =
     Ctrl Out w i -> (model,cdispatch msg)
     Ctrl In w i -> (model,cdispatch msg)
     Ctrl Forward w i ->
-      let
-        (newModel,output) = doOps [msg] model
-      in
-      case output of
-        [] -> (newModel , put Nothing)
-        _ -> (newModel , List.map cdispatch output |> Cmd.batch)
+      case doOps [msg] model of
+        Nothing -> (model,error "something went wrong")
+        Just (newModel,output) ->
+         case output of
+          [] -> (newModel , put Nothing)
+          _ -> (newModel , List.map cdispatch output |> Cmd.batch)
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
