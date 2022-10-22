@@ -32,6 +32,7 @@ import Char
 import Tuple
 import Dict
 import Either
+import Monocle.Prism
 
 -- type alias InputType = Int
 -- type alias OutputType = Maybe Int
@@ -139,29 +140,31 @@ loopMap c s =
 shift : Ctrl -> Bool -> (List Ctrl,Bool)
 shift c b =
   if getInt c == 6 then
-      ([],b)
+      ([],not b)
     else if b then
       ([map (const 3) c],b)
     else
       ([c],b)
 
 -- below... should be using >>= ??????
-toLayer : (Ctrl -> a -> (List Ctrl,a)) -> (LState -> Either.Either Error a) ->
-          (a -> Either.Either Error LState) ->
-          Layer
-toLayer l f g =
-  \c s -> case f s of
-              Either.Right x -> let (xs,ss) = (l c x) in
-                                  case g ss of
-                                    Either.Right ls -> Either.Right (xs,ls)
-                                    Either.Left e -> Either.Left e
-              Either.Left e -> Either.Left e
+-- nope, it gets complicated:
+--   \c s -> f s |> Either.andThen (\x -> let (xs,ss) = (l c x) in  ......
+toLayer : (Ctrl -> a -> (List Ctrl,a)) -> Monocle.Prism.Prism LState a ->
+          (Ctrl -> LState -> Either.Either Error (List Ctrl,LState))
+toLayer l p =
+  \c s -> case p.getOption s of
+              -- Just x -> Either.Right (Tuple.mapSecond p.reverseGet (l c x))
+              Just x -> let (xs,ss) = (l c x) in Either.Right (xs,p.reverseGet ss)
+              Nothing -> Either.Left UnexpectedLState
+
+-- this could be made cleaner with templates
+lstateToBoolPrism : Monocle.Prism.Prism LState Bool
+lstateToBoolPrism = Monocle.Prism.Prism (\x -> case x of
+                                                 Toggle b -> Just b
+                                                 _ -> Nothing) Toggle
 
 shiftLayer : Ctrl -> LState -> Either.Either Error (List Ctrl,LState)
-shiftLayer = toLayer shift (\s -> case s of
-                                     Toggle b -> Either.Right b
-                                     _ -> Either.Left UnexpectedLState)
-                           (\b -> Either.Right (Toggle b))
+shiftLayer = toLayer shift lstateToBoolPrism
 
 -- would be cooler if there was pttern matching on functions...
 -- shiftLayer 6 b = (Nothing,not b)
@@ -308,7 +311,7 @@ type alias Layer = Ctrl -> LState -> Either.Either Error (List Ctrl, LState)
 
 init : Flags -> ( Model, Cmd Msg )
 init _ =
-    ( [ (tapNextReleaseA , None) ] , Cmd.none )
+    ( [ (shiftLayer , Toggle False) ] , Cmd.none )
 
 
 -- replace Maybe with Either.Either plus meaningful error message
