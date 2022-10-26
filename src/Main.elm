@@ -24,7 +24,6 @@ main =
 init : Flags -> ( Model, Cmd Msg )
 init _ = ( [] , Cmd.none )
 
--- TODO doOps strips destination and time before passing to layers
 -- TODO use monad operators to simplify complex state expressions
 -- TODO use state monad to simplify type of doOps?
 doOps : List Ctrl -> Model -> Either.Either Error (Model, List Ctrl)
