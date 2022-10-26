@@ -1,4 +1,10 @@
-module Layer exposing (LState(..),Layer,mkSimple,toLayer,nonePrism,togglePrism)
+module Layer exposing (LState(..)
+                      ,Layer
+                      ,mkSimple
+                      ,toLayer
+                      ,nonePrism
+                      ,togglePrism
+                      ,catchPrism)
 
 import Either
 import Event exposing (Ctrl,intToCtrl)
@@ -27,6 +33,12 @@ togglePrism = Prism (\x -> case x of
                               Toggle b -> Just b
                               _ -> Nothing)
                     Toggle
+
+catchPrism : Prism LState (Bool,List Ctrl)
+catchPrism = Prism (\x -> case x of
+                              Catch b cs -> Just (b,cs)
+                              _ -> Nothing)
+                   (\(b,cs) -> Catch b cs)
 
 -- If we implement Layer with an StateEither monad, would it be an
 -- instance of an Applicative? A function (Int -> List Ctrl) could be
