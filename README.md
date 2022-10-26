@@ -13,6 +13,42 @@ Elm Slack for their help. I was also inspired
 by [Punie's article](https://discourse.elm-lang.org/t/simply-typed-lambda-calculus-in-elm/1772) on his simply-typed lambda calculus
 interpreter and the [code for it](https://github.com/Punie/elm-stlc).
 
+## Implementing kmonad
+-- there are actually 3 ways to do loopback:
+-- 1 using ports with a JS listener
+-- 2 through the Elm runtime with a Cmd Msg
+-- 3 recursion
+-- 4 through the Elm runtime using the model
+
+-- Now layers should be able to send control events to themselves and
+-- eachother, but what if we want layers to manipulate the stack
+-- directly? Ideas:
+-- 1 Construct an algebra of state operations and allow the layer to
+--   emit a list of state operations
+-- 2 Pass the entire state to the layer and allow direct manipulation
+-- 3 Allow the layer to "replace itself." I think this didn't get me anywhere:
+--   Event -> State -> (List Event, (Event -> State -> (List Event))
+
+To run: sh make.sh then node src/repl.js
+
+-- would be cooler if there was pttern matching on functions...
+-- shiftLayer 6 b = (Nothing,not b)
+-- and
+-- shiftLayer i True = (Just 3,b)
+-- and
+-- shiftLayer i False = (Just i,b)
+-- elm really is dumb haskell
+-- shiftLayer : Ctrl -> LState -> Maybe (List Ctrl,LState)
+-- shiftLayer c s =
+-- case s of
+--    Toggle b -> if getInt c == 6 then
+--                    Just ([],Toggle (not b))
+--                  else if b then
+--                    Just ([map (const 3) c],Toggle b)
+--                  else
+--                    Just ([c],Toggle b)
+--    _ -> ([],None)
+
 
 ## Installation
 
