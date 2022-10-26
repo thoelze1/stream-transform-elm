@@ -24,30 +24,32 @@ main =
 init : Flags -> ( Model, Cmd Msg )
 init _ = ( [] , Cmd.none )
 
--- TODO use monad operators to simplify complex state expressions
--- TODO use state monad to simplify type of doOps?
+-- I tried reimplementing doOps using Either.andThen to capture some
+-- of the repetitive Left checks, but these checks are mixed in with
+-- other logic which gets in the way of chaining Either
+-- computations. Even with StateEither, I'm not sure the code can be
+-- simplified much.
 doOps : List Ctrl -> Model -> Either.Either Error (Model, List Ctrl)
 doOps i m =
   case m of
-    [] -> Either.Right ([],i)
+    [] -> Right ([],i)
     ((l,s)::rest) ->
       case i of
-        [] -> Either.Right (m,[])
+        [] -> Right (m,[])
         ((Ctrl d w x)::xs) ->
          case (l x s) of
-           Either.Left e -> Either.Left e
-           Either.Right (output,newLayerState) ->
+           Left e -> Left e
+           Right (output,newLayerState) ->
             case doOps xs ((l,newLayerState)::rest) of
-             Either.Left e -> Either.Left e
-             Either.Right (newModelState,finalOutput1) ->
+             Left e -> Left e
+             Right (newModelState,finalOutput1) ->
               case newModelState of
-               [] -> Either.Left BadModel
+               [] -> Left BadModel
                ((ya,yb)::ys) ->
                 case doOps output ys of
                  Either.Left e -> Either.Left e
                  Either.Right (newRestState,finalOutput2) ->
-                  Either.Right ((l,yb)::newRestState,List.append finalOutput1
-                                                         finalOutput2)
+                  Either.Right ((l,yb)::newRestState,finalOutput1++ finalOutput2)
   
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
