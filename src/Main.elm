@@ -24,12 +24,15 @@ main =
 init : Flags -> ( Model, Cmd Msg )
 init _ = ( [] , Cmd.none )
 
+-- TODO Elm calls Either "Result", so I should replace Either with
+-- Result everywhere
+
 -- I tried reimplementing doOps using Either.andThen to capture some
 -- of the repetitive Left checks, but these checks are mixed in with
 -- other logic which gets in the way of chaining Either
 -- computations. Even with StateEither, I'm not sure the code can be
 -- simplified much.
-doOps : List Ctrl -> Model -> Either.Either Error (Model, List Ctrl)
+doOps : List Ctrl -> Model -> Either Error (Model, List Ctrl)
 doOps i m =
   case m of
     [] -> Right ([],i)
@@ -47,9 +50,9 @@ doOps i m =
                [] -> Left BadModel
                ((ya,yb)::ys) ->
                 case doOps output ys of
-                 Either.Left e -> Either.Left e
-                 Either.Right (newRestState,finalOutput2) ->
-                  Either.Right ((l,yb)::newRestState,finalOutput1++ finalOutput2)
+                 Left e -> Left e
+                 Right (newRestState,finalOutput2) ->
+                  Right ((l,yb)::newRestState,finalOutput1++ finalOutput2)
   
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
