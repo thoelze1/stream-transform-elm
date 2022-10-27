@@ -5,7 +5,6 @@ sending events back through the layer stack, sending delayed events,
 "catching" events and emitting them as a group, etc -}
 
 import Layer exposing (..)
-import Either exposing (Either(..))
 import Event exposing (Ctrl(..),Dest(..),ctrlToInt,ctrlMap,intToCtrl)
 import Error exposing (Error(..))
 import Utils exposing (const)

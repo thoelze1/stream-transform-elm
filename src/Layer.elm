@@ -6,7 +6,6 @@ module Layer exposing (LState(..)
                       ,togglePrism
                       ,catchPrism)
 
-import Either
 import Event exposing (Ctrl,intToCtrl)
 import Monocle.Prism exposing (Prism)
 import Utils exposing (const)
@@ -43,7 +42,7 @@ catchPrism = Prism (\x -> case x of
 -- If we implement Layer with an StateEither monad, would it be an
 -- instance of an Applicative? A function (Int -> List Ctrl) could be
 -- lifted to type Layer
-type alias Layer = Int -> LState -> Either.Either Error (List Ctrl, LState)
+type alias Layer = Int -> LState -> Result Error (List Ctrl, LState)
 
 lift1 : (Int -> Int) -> (Int -> List Ctrl)
 lift1 f = f >> intToCtrl >> List.singleton
@@ -55,12 +54,12 @@ lift2 f = \i s -> (f i,s)
 -- nope, it gets complicated:
 --   \c s -> f s |> Either.andThen (\x -> let (xs,ss) = (l c x) in  ......
 toLayer : (Int -> a -> (List Ctrl,a)) -> Monocle.Prism.Prism LState a ->
-          (Int -> LState -> Either.Either Error (List Ctrl,LState))
+          (Int -> LState -> Result Error (List Ctrl,LState))
 toLayer l p =
   \c s -> case p.getOption s of
               -- Just x -> Either.Right (Tuple.mapSecond p.reverseGet (l c x))
-              Just x -> let (xs,ss) = (l c x) in Either.Right (xs,p.reverseGet ss)
-              Nothing -> Either.Left Error.UnexpectedLState
+              Just x -> let (xs,ss) = (l c x) in Ok (xs,p.reverseGet ss)
+              Nothing -> Err Error.UnexpectedLState
 
 mkSimple : (Int -> Int) -> Layer
 mkSimple f = toLayer (lift1 f |> lift2) nonePrism
