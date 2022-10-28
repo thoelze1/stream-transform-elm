@@ -8,9 +8,9 @@ output each time an event is received.
 Note: Elm builds to JS and therefore is typically used for web
 development. However, by passing events to and from a node.js repl,
 you can easily use Elm for a simple, command-line type
-applicatioin. For this project I built directly off of a boilerplate
-starter called Platform.worker written by [[https://github.com/jxxcarlson][@jxxcarlson]] to demonstrate
-the propensity for Elm to be used in a command-line scenario.
+application. For this project I built directly off of a boilerplate
+starter [[https://github.com/jxxcarlson/elm-platform-worker-example][project]] written by [[https://github.com/jxxcarlson][@jxxcarlson]] to demonstrate the propensity
+for Elm to be used in a command-line scenario.
 
 ** To run
 #+begin_src bash
