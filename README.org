@@ -1,15 +1,15 @@
 * Stream Transformation in Elm
 This project tests out some ideas for stream transformation as I read
 and contribute to kmonad. Elm makes testing these ideas easy because
-it comes with a builtin UI: you initialize some state (`init`) and
-define a function (`update`) that changes that state and produces some
+it comes with a builtin UI: you initialize some state (~init~) and
+define a function (~update~) that changes that state and produces some
 output each time an event is received.
 
 Note: Elm builds to JS and therefore is typically used for web
 development. However, by passing events to and from a node.js repl,
 you can easily use Elm for a simple, command-line type
 applicatioin. For this project I built directly off of a boilerplate
-starter called Platform.worker written by @jxxcarlson to demonstrate
+starter called Platform.worker written by [[https://github.com/jxxcarlson][@jxxcarlson]] to demonstrate
 the propensity for Elm to be used in a command-line scenario.
 
 ** To run
@@ -44,11 +44,11 @@ back to itself. There are a few ways to do this "loopback" of events:
 - Using ports through the JS runtime: Elm sends an event through a
   special port, and JS initializes a dedicated listener that passes
   all events from this port back through the standard port to Elm
-- Using the Elm runtime: output a `Cmd Msg` in `update` that will be
-  received by `update` shortly. See
+- Using the Elm runtime: output a ~Cmd Msg~ in ~update~ that will be
+  received by ~update~ shortly. See
   https://medium.com/elm-shorts/how-to-turn-a-msg-into-a-cmd-msg-in-elm-5dd095175d84
   for discussion of this method.
-- Direct recursion: while running `update`, invoke `update` again
+- Direct recursion: while running ~update~, invoke ~update~ again
 
 ** Thoughts about Elm
 The way I'm using Elm--which is to dive deeper into learning typing
@@ -62,8 +62,8 @@ abstract types.
 
 ** What I've learned
 *** A function can't output a replacement for itself
-An interesting loop arises if you want allow a layer to (output events
-and) directly "replace itself" like so:
+An interesting loop arises if you want to allow a layer to (output
+events and) directly "replace itself" like so:
 
 #+begin_src haskell
 Event -> State -> (List Event, (Event -> State -> (List Event, ...))
@@ -82,4 +82,4 @@ choosing a simple model (layer stack) is already reemerging in my
 implementation of tapNextRelease, and will probably continue to do so
 if I reimplement layers to allow manipulation of the stack. Perhaps
 the very idea of layers and a stack of layers is an object-oriented
-abstraction written in functional code.
+abstraction.
