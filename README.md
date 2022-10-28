@@ -1,117 +1,69 @@
-# Platform.worker
+# Stream Transformation in Elm
 
-This is a little experiment to learn how to use Elm's
-`Platform.worker` for simple command-line programs (CLI).  
-The worker is a kind of "black box" which accepts
-input from a command-line program
-via ports, computes a value from the input, and sends it back
-by the same method.  There are two versions, described below: a
-one-shot version, and a repl.
+This project tests out some ideas for stream transformation--my
+ultimate goal is to contribute to kmonad. Elm makes testing ideas easy
+because it comes with a builtin UI: you can initialize some state
+(`init`) and define a function (`update`) that changes that state and
+produces some output each time an event is received.
 
-I would like to thank @pd-andy, @urban-a and @jfmengels on the
-Elm Slack for their help. I was also inspired
-by [Punie's article](https://discourse.elm-lang.org/t/simply-typed-lambda-calculus-in-elm/1772) on his simply-typed lambda calculus
-interpreter and the [code for it](https://github.com/Punie/elm-stlc).
+Note: Elm builds to JS and therefore is typically used for web
+development. However, by passing events to and from a node.js repl,
+you can easily use Elm for a simple, command-line type
+applicatioin. For this project I built directly off of a template
+project called Platform.worker written by @jxxcarlson to demonstrate
+the propensity for Elm to be used in a command-line scenario.
 
-## Implementing kmonad
--- there are actually 3 ways to do loopback:
--- 1 using ports with a JS listener
--- 2 through the Elm runtime with a Cmd Msg
--- 3 recursion
--- 4 through the Elm runtime using the model
+## To run
 
--- Now layers should be able to send control events to themselves and
--- eachother, but what if we want layers to manipulate the stack
--- directly? Ideas:
--- 1 Construct an algebra of state operations and allow the layer to
---   emit a list of state operations
--- 2 Pass the entire state to the layer and allow direct manipulation
--- 3 Allow the layer to "replace itself." I think this didn't get me anywhere:
---   Event -> State -> (List Event, (Event -> State -> (List Event))
-
-To run: sh make.sh then node src/repl.js
-
--- would be cooler if there was pttern matching on functions...
--- shiftLayer 6 b = (Nothing,not b)
--- and
--- shiftLayer i True = (Just 3,b)
--- and
--- shiftLayer i False = (Just i,b)
--- elm really is dumb haskell
--- shiftLayer : Ctrl -> LState -> Maybe (List Ctrl,LState)
--- shiftLayer c s =
--- case s of
---    Toggle b -> if getInt c == 6 then
---                    Just ([],Toggle (not b))
---                  else if b then
---                    Just ([map (const 3) c],Toggle b)
---                  else
---                    Just ([c],Toggle b)
---    _ -> ([],None)
-
-
-## Installation
-
-```bash
+```
 $ sh make.sh
+$ node src/repl.js
 ```
 
-## Using the one-shot CLI
+## What I'm Trying Out
 
-```bash
- $ node src/cli.js 47
+The primary idea I wanted to try was modeling transformation as a
+stack of user-defined layers. At first I imagined that each layer
+could itself manipulate the stack, in addition to being able to emit
+events to other layers for propogation up (down, through, etc) the
+stack. At this point I have started with a more manageable model where
+each layer manages its own piece of state and emits events.
 
-> platform@1.0.0 cli /Users/carlson/dev/elm/experiments/platform
-> node src/cli.js "47"
+If I continue with this idea, I have some ideas as to how I might
+allow stack layers to manipulate the rest of the stack:
 
-   Input:  47
-   Output: 142
-```
+- Construct an algebra of state operations and allow the layer to emit
+  a list of state operations
 
-**Note.** Input is transformed to output in
-the Elm app `Main.elm` using the function
+- Pass the entire layer stack to each layer and allow direct manipulation
 
-```elm
-transform : InputType -> OutputType
-transform k =
-    case modBy 2 k == 0 of
-        True -> k // 2
-        False -> 3*k+ 1
-```
-where `InputType` and `OutputType` are aliases for `Int`.
-In words,
+An interesting loop arises if you want allow a layer to directly
+"replace itself" like so:
 
-> If the input is
-  even, divide it by 2.  If it is odd, multiply it
-  by 3 and add 1.
+`Event -> State -> (List Event, (Event -> State -> (List Event, ...))`
 
-To do something more interesting, replace
-the function `transform` (and if need be, the types).
+An infinite type!
 
+## Sending event back through the stack
 
+I don't have a rigorous definition for what requirements a "stream
+transformer" API would have to meet in order to allow any arbitrary
+transformation. That being said, I have a hunch that under my
+layer model such an API would have to allow a layer to send events
+back to itself. There are a few ways to do this "loopback" of events:
 
+- using ports through the JS runtime: Elm sends an event through a
+  special port, and JS initializes a dedicated listener that passes
+  all events from this port back through the standard port to Elm
 
-## Using repl
+- using the Elm runtime: output a `Cmd Msg` in `update` that will be
+  received by `update` shortly. see
+  https://medium.com/elm-shorts/how-to-turn-a-msg-into-a-cmd-msg-in-elm-5dd095175d84
+  for more
 
-```bash
- $ node src/repl.js
+- direct recursion: while running `update`, invoke `update` again
 
-> platform@1.0.0 repl /Users/carlson/dev/elm/experiments/platform
-> node src/repl.js
+## Thoughts about Elm
 
-> 47
-142
-> 142
-71
-> 71
-214
->
-```
-What happens if you continue with the above?
-
-**Note:** There is a related command-line interpreter
-in this [repo](https://github.com/jxxcarlson/elm-cli-load-file).
-The command `load foo.txt` loads the contents of `./foo.txt` into memory.
-The command `show` displays the contents of the file in memory.
-
-**Note to self:** This code is found at `~/dev/elm/experiments/platform`
+The way I'm using Elm, it's basically just worse Haskell. No pattern
+matching on arguments, no typeclasses, no monad transformers...
